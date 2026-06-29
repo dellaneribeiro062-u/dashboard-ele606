@@ -6,7 +6,7 @@ import seaborn as sns
 
 # Configuração da página web
 st.set_page_config(page_title="Dashboard - Clustering de Textos", layout="wide")
-st.title("📊 Painel Interativo de Análise de Clusters (ELE606)")
+st.title("📊 Painel Interativo de Análise de Clusters")
 
 # Carrega os dados exportados do pipeline
 @st.cache_data
