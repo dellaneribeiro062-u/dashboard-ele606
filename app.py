@@ -14,7 +14,7 @@ def carregar_dados():
     # Carrega estritamente o arquivo oficial do seu dashboard
     return joblib.load('dados_dashboard.pkl')
 
-    dados = carregar_dados()
+dados = carregar_dados()
 
 # Captura e trata o DataFrame de métricas (df_resultados)
 if 'df_resultados' in dados:
