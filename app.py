@@ -11,8 +11,11 @@ st.title("📊 Painel Interativo de Análise de Clusters")
 # Carrega os dados exportados do pipeline
 @st.cache_data
 def carregar_dados():
-    # Carrega estritamente o arquivo oficial do seu dashboard
-    return joblib.load('dados_dashboard.pkl')
+    # Tenta carregar o pkl padrão do seu dashboard original, ou o pkl do pipeline adaptado
+    try:
+        return joblib.load('dados_dashboard.pkl')
+    except:
+        return joblib.load('resultado_pipeline_clustering.pkl')
 
 dados = carregar_dados()
 
