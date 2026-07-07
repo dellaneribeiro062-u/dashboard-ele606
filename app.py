@@ -19,29 +19,16 @@ except Exception as e:
     st.error(f"⚠️ Erro ao carregar o arquivo 'dados_dashboard.pkl': {e}")
     st.stop()
 
-# =====================================================================
-# TRATAMENTO ANTI-BUG: Limpando o DataFrame de métricas vindo do .pkl
-# =====================================================================
+# Captura e trata o DataFrame de métricas (df_resultados)
 if 'df_resultados' in dados:
-    df_bruto = dados['df_resultados']
+    df_resultados = dados['df_resultados'].copy()
 elif 'resultados_metricas' in dados:
-    df_bruto = dados['resultados_metricas']
+    df_resultados = dados['resultados_metricas'].copy()
 else:
-    df_bruto = pd.DataFrame()
+    df_resultados = pd.DataFrame()
 
-df_resultados = pd.DataFrame()
-if not df_bruto.empty:
-    # 1. Forçamos a cópia para desvincular de qualquer escopo do notebook
-    df_temp = df_bruto.copy()
-    df_temp.columns = [str(col).replace('Representacao', 'Representação') for col in df_temp.columns]
-    
-    # 2. Mantemos RESTRITAMENTE as colunas necessárias para o gráfico, eliminando lixos ocultos
-    colunas_desejadas = [c for c in ['Base', 'Algoritmo', 'Representação', 'Silhouette'] if c in df_temp.columns]
-    
-    # 3. Recriamos um DataFrame 100% limpo, contendo apenas dados primitivos
-    df_resultados = pd.DataFrame(df_temp[colunas_desejadas].values, columns=colunas_desejadas)
-    if 'Silhouette' in df_resultados.columns:
-        df_resultados['Silhouette'] = pd.to_numeric(df_resultados['Silhouette'], errors='coerce')
+if not df_resultados.empty:
+    df_resultados.columns = [col.replace('Representacao', 'Representação') for col in df_resultados.columns]
 
 # Barra lateral para navegação
 st.sidebar.header("Configurações de Visualização")
@@ -56,10 +43,7 @@ aba1, aba2 = st.tabs(["📈 Desempenho e Métricas", "🔍 Exploração de Texto
 with aba1:
     st.subheader(f"Comparação de Desempenho Completo ({base_selecionada})")
 
-    if not df_resultados.empty and 'Base' in df_resultados.columns:
-        df_filtrado = df_resultados[df_resultados['Base'] == base_selecionada].copy()
-    else:
-        df_filtrado = pd.DataFrame()
+    df_filtrado = df_resultados[df_resultados['Base'] == base_selecionada] if not df_resultados.empty else pd.DataFrame()
 
     if not df_filtrado.empty:
         st.dataframe(df_filtrado)
@@ -80,11 +64,20 @@ with aba1:
             plt.close(fig1)
 
         with graf_col2:
+            metricas_alternativas = [c for c in df_filtrado.columns if c in ['Davies-Bouldin', 'Davies_Bouldin', 'Calinski-Harabasz', 'Calinski_Harabasz', 'V-Measure', 'Completeness']]
             fig2 = plt.figure(figsize=(8, 4.5))
             ax2 = fig2.add_subplot(111)
-            sns.barplot(data=df_filtrado, x=col_hue, y='Silhouette', hue='Algoritmo', palette='Pastel1', ax=ax2)
-            ax2.set_ylabel("Silhouette Score")
-            ax2.set_title(f"Silhouette por Tipo de Representação - {base_selecionada}")
+            
+            if metricas_alternativas:
+                metrica_alvo = metricas_alternativas[0]
+                sns.barplot(data=df_filtrado, x='Algoritmo', y=metrica_alvo, hue=col_hue, palette='Set1', ax=ax2)
+                ax2.set_ylabel(f"{metrica_alvo}")
+                ax2.set_title(f"Métrica {metrica_alvo} - {base_selecionada}")
+            else:
+                sns.barplot(data=df_filtrado, x=col_hue, y='Silhouette', hue='Algoritmo', palette='Pastel1', ax=ax2)
+                ax2.set_ylabel("Silhouette Score")
+                ax2.set_title(f"Silhouette por Tipo de Representação - {base_selecionada}")
+            
             fig2.tight_layout()
             st.pyplot(fig2)
             plt.close(fig2)
@@ -105,7 +98,7 @@ with aba1:
         st.info("Nenhum dado de métrica encontrado para esta base.")
 
 # ==========================================
-# ABA 2: EXPLORAÇÃO DE TEXTOS POR CLUSTER 
+# ABA 2: EXPLORAÇÃO DE TEXTOS POR CLUSTER (BLINDADA COM FORMULÁRIO)
 # ==========================================
 with aba2:
     st.subheader(f"Documentos Agrupados na {base_selecionada}")
@@ -130,6 +123,7 @@ with aba2:
         else:
             nomes_formatados = {k: k.replace('labels_kmeans_', 'KMeans + ').replace('labels_agglomerative_', 'Hierárquico + ').replace('labels_dbscan_', 'DBSCAN + ') for k in opcoes_disponiveis}
 
+            # --- CRIAMOS UM FORMULÁRIO PARA ISOLAR COMPLETAMENTE A ABA 2 ---
             with st.form(key=f"formulario_clusters_{base_selecionada}"):
                 st.markdown("#### ⚙️ Selecione os Parâmetros de Busca")
                 
@@ -139,8 +133,9 @@ with aba2:
                     format_func=lambda x: nomes_formatados.get(x, x)
                 )
 
+                # Forçamos a conversão explícita para conter apenas inteiros limpos, evitando bugs com arrays do novo DBSCAN
                 clusters_brutos = dados_da_base[algoritmo_labels_chave]
-                lista_clusters = sorted(list(set([int(c) for c in clusters_brutos if c is not None and str(c).replace('-','').isdigit() or (isinstance(c, (int, float)) and not pd.isna(c))])))
+                lista_clusters = sorted(list(set([int(c) for c in clusters_brutos if c is not None and str(c).replace('-','').isdigit()])))
 
                 cluster_selecionado = 0
                 if len(lista_clusters) > 1:
@@ -154,19 +149,19 @@ with aba2:
                     cluster_selecionado = lista_clusters[0]
                     st.info(f"💡 Este algoritmo gerou apenas um grupo válido: **Cluster {cluster_selecionado}**")
 
+                # Botão obrigatório do formulário que trava e destrava as requisições
                 botao_filtrar = st.form_submit_button(label="🔍 Filtrar e Atualizar Textos")
 
+            # --- A RENDERIZAÇÃO DOS TEXTOS SÓ ACONCECE APÓS O USUÁRIO CLICAR NO BOTÃO ---
             if botao_filtrar or len(lista_clusters) == 1:
                 textos = dados_da_base['textos_originais']
                 
+                # Tratamento robusto para garantir que a comparação não quebre se o cluster for float, int ou string
                 textos_filtrados = []
                 for i, c in enumerate(clusters_brutos):
-                    try:
-                        if c is not None and not pd.isna(c):
-                            if int(float(c)) == int(cluster_selecionado):
-                                textos_filtrados.append(textos[i])
-                    except:
-                        continue
+                    if c is not None and str(c).replace('-','').isdigit():
+                        if int(c) == int(cluster_selecionado):
+                            textos_filtrados.append(textos[i])
 
                 st.write(f"📝 Mostrando os primeiros 10 de {len(textos_filtrados)} textos encontrados no **Cluster {cluster_selecionado}**:")
                 if len(textos_filtrados) > 0:
